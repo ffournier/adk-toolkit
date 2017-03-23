@@ -75,28 +75,52 @@ public class AdkManager implements IAdkManager {
         };
     }
 
-    protected void openAccessory(UsbAccessory usbAccessory) {
-        mParcelFileDescriptor = mUsbManager.openAccessory(usbAccessory);
-        if (mParcelFileDescriptor != null) {
-            mUsbAccessory = usbAccessory;
-            FileDescriptor fileDescriptor = mParcelFileDescriptor.getFileDescriptor();
+    protected boolean openAccessory(UsbAccessory usbAccessocd) {
+        try {
+            mParcelFileDescriptor = mUsbManager.openAccessory(usbAccessory);
+            if (mParcelFileDescriptor != null) {
+                mUsbAccessory = usbAccessory;
+                FileDescriptor fileDescriptor = mParcelFileDescriptor.getFileDescriptor();
 
-            if (fileDescriptor != null) {
-                mFileInputStream = new FileInputStream(fileDescriptor);
-                mFileOutputStream = new FileOutputStream(fileDescriptor);
+                if (fileDescriptor != null) {
+                    mFileInputStream = new FileInputStream(fileDescriptor);
+                    mFileOutputStream = new FileOutputStream(fileDescriptor);
+                    return true;
+                }
             }
+        } catch(SecurityException e) {
+            // Nothing
+            Log.e(getClass().getSimpleName(), e.getMessage());
         }
+        return false;
     }
 
     protected void closeAccessory() {
         if (mParcelFileDescriptor != null) {
             try {
                 mParcelFileDescriptor.close();
-            } catch (IOException e) {
+            } catch (Exception e) {
                 Log.e(LOG_TAG, e.getMessage());
+            } finally {
+                if (mFileInputStream != null) {
+                    try {
+                        mFileInputStream.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                if (mFileOutputStream != null) {
+                    try {
+                        mFileOutputStream.flush();
+                        mFileOutputStream.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
             }
         }
-
+        mFileOutputStream = null;
+        mFileInputStream = null;
         mParcelFileDescriptor = null;
         mUsbAccessory = null;
     }
@@ -109,6 +133,7 @@ public class AdkManager implements IAdkManager {
     public void write(byte[] values) {
         try {
             mFileOutputStream.write(values);
+            mFileOutputStream.flush();
         } catch (IOException e) {
             Log.e(LOG_TAG, e.getMessage());
         }
@@ -123,6 +148,7 @@ public class AdkManager implements IAdkManager {
     public void write(int value) {
         try {
             mFileOutputStream.write(value);
+            mFileOutputStream.flush();
         } catch (IOException e) {
             Log.e(LOG_TAG, e.getMessage());
         }
@@ -140,33 +166,29 @@ public class AdkManager implements IAdkManager {
 
         try {
             mFileOutputStream.write(buffer);
+            mFileOutputStream.flush();
         } catch (IOException e) {
             Log.e(LOG_TAG, e.getMessage());
         }
     }
 
     @Override
-    public AdkMessage read() {
+    public AdkMessage read() throws IOException {
         byte[] buffer = new byte[BUFFER_SIZE];
         byte[] response;
         AdkMessage message;
 
-        try {
-            // Read from ADK
-            mByteRead = mFileInputStream.read(buffer, 0, buffer.length);
+        // Read from ADK
+        mByteRead = mFileInputStream.read(buffer, 0, buffer.length);
 
-            if (mByteRead != -1) {
-                // Create a new buffer that fits the exact number of read bytes
-                response = Arrays.copyOfRange(buffer, 0, mByteRead);
+        if (mByteRead != -1) {
+            // Create a new buffer that fits the exact number of read bytes
+            response = Arrays.copyOfRange(buffer, 0, mByteRead);
 
-                // Prepare a message instance
-                message = new AdkMessage(response);
-            } else {
-                message = new AdkMessage(null);
-            }
-        } catch (IOException e) {
-            Log.e(LOG_TAG, e.getMessage());
-            message = null;
+            // Prepare a message instance
+            message = new AdkMessage(response);
+        } else {
+            message = new AdkMessage(null);
         }
 
         return message;
@@ -178,13 +200,14 @@ public class AdkManager implements IAdkManager {
     }
 
     @Override
-    public void open() {
+    public boolean open() {
         if (mFileInputStream == null || mFileOutputStream == null) {
             UsbAccessory[] usbAccessoryList = mUsbManager.getAccessoryList();
             if (usbAccessoryList != null && usbAccessoryList.length > 0) {
-                openAccessory(usbAccessoryList[0]);
+                return openAccessory(usbAccessoryList[0]);
             }
         }
+        return false;
     }
 
     public IntentFilter getDetachedFilter() {
@@ -207,5 +230,9 @@ public class AdkManager implements IAdkManager {
 
     protected UsbManager getUsbManager() {
         return mUsbManager;
+    }
+
+    public boolean isOpen() {
+        return mFileInputStream != null && mFileOutputStream != null;
     }
 }

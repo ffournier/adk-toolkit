@@ -1,13 +1,14 @@
 package me.palazzetti.adktoolkit;
 
 import me.palazzetti.adktoolkit.response.AdkMessage;
+import java.io.IOException;
 
 /**
  * Defines ADK interfaces
  */
 
 public interface IAdkManager {
-    AdkMessage read();
+    AdkMessage read() throws IOException;
     void write(byte[] values);
     void write(byte value);
     void write(int value);
@@ -16,5 +17,5 @@ public interface IAdkManager {
 
     // Activity related interfaces
     void close();
-    void open();
+    boolean open();
 }
